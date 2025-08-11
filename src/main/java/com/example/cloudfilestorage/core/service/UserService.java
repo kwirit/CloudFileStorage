@@ -4,33 +4,33 @@ import com.example.cloudfilestorage.core.exception.AuthException.UserAlreadyExis
 import com.example.cloudfilestorage.core.exception.AuthException.UserNotFoundException;
 import com.example.cloudfilestorage.core.model.User;
 import com.example.cloudfilestorage.core.repository.UserRepository;
-import com.example.cloudfilestorage.core.validation.PasswordValidator;
-import com.example.cloudfilestorage.core.validation.UsernameValidator;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class UserService implements UserDetailsService {
 
-    private final PasswordValidator passwordValidator;
-    private final UsernameValidator usernameValidator;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(PasswordValidator passwordValidator,
-                       UsernameValidator usernameValidator,
-                       UserRepository userRepository) {
-        this.passwordValidator = passwordValidator;
-        this.usernameValidator = usernameValidator;
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
-    public String signUp(String username, String password) {
-        return username;
-    }
-    public String signOut(HttpServletRequest request) throws Exception {
-        return "Sign Out Successfully";
+    public User signUp(String username, String password) throws UserAlreadyExistsException {
+        if (userRepository.findByUsername(username).isPresent()) {
+            throw new UserAlreadyExistsException(
+                    String.format("Пользователь с именем пользователя: + %s + уже существует", username)
+            );
+        }
+        String encodedPassword = passwordEncoder.encode(password);
+
+        User user = new User(username, encodedPassword);
+
+        return userRepository.save(user);
     }
 
     @Override

@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
-public class SignInRequest {
+public class SignInUpRequest {
 
     @NotBlank(message = "Имя пользователя не может быть пустым")
     @Size(min = 4, max = 10, message = "Имя пользователя должно быть от 4 до 10 символов")

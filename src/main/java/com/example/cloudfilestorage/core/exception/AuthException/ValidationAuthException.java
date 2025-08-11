@@ -1,6 +1,6 @@
 package com.example.cloudfilestorage.core.exception.AuthException;
 
-public class ValidationAuthException extends Exception{
+public class ValidationAuthException extends RuntimeException{
     public ValidationAuthException() {
         super();
     }

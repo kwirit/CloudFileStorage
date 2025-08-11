@@ -10,9 +10,7 @@ import java.time.LocalDate;
 @Entity
 @Getter
 @Setter
-@Builder
 @Table(name = "users")
-@AllArgsConstructor
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -25,4 +23,8 @@ public class User {
     private String password;
 
     public User() {}
+    public User(String username, String password) {
+        this.username = username;
+        this.password = password;
+    }
 }
