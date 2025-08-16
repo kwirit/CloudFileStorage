@@ -17,14 +17,14 @@ import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @EnableWebSecurity
-class SecurityConfig {
+public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/sign-up").permitAll()
+                        .requestMatchers("/api/auth/sign-in").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session

@@ -1,6 +1,6 @@
 package com.example.cloudfilestorage.core.model;
 
-import com.example.cloudfilestorage.core.Utilities.ResourcesType;
+import com.example.cloudfilestorage.core.utilities.ResourcesType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

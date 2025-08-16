@@ -33,13 +33,6 @@ public class AuthController {
     @PostMapping("/sign-up")
     public ResponseEntity<?> signUpController(@Valid @RequestBody SignInUpRequest requestData) {
         User newUser = userService.signUp(requestData.getUsername(), requestData.getPassword());
-        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                requestData.getUsername(),
-                requestData.getPassword()
-        );
-
-        Authentication authentication = authenticationManager.authenticate(authToken);
-        SecurityContextHolder.getContext().setAuthentication(authentication);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
