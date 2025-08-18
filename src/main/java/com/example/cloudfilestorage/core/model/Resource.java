@@ -13,7 +13,7 @@ import lombok.Setter;
 @Builder
 @Table(name = "resources")
 @AllArgsConstructor
-public class Resources {
+public class Resource {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
@@ -34,5 +34,5 @@ public class Resources {
     @Column(name = "type", nullable = false)
     private ResourcesType type;
 
-    public Resources() {}
+    public Resource() {}
 }
