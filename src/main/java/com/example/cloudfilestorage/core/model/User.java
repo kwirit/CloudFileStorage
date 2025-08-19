@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+
 import java.time.LocalDate;
 
 @Entity
@@ -22,7 +23,9 @@ public class User {
     @Column(name = "password", nullable = false)
     private String password;
 
-    public User() {}
+    public User() {
+    }
+
     public User(String username, String password) {
         this.username = username;
         this.password = password;

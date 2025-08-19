@@ -2,104 +2,176 @@ package com.example.cloudfilestorage.core.service;
 
 import com.example.cloudfilestorage.api.dto.UploadResourcesResponse;
 import com.example.cloudfilestorage.api.mapper.ResourceMapper;
-import com.example.cloudfilestorage.core.exception.ResourceException.UnauthorizedUserException;
+import com.example.cloudfilestorage.core.exception.ResourceException.FailedResourceLoadingException;
+import com.example.cloudfilestorage.core.exception.ResourceException.FileAlreadyExistException;
+import com.example.cloudfilestorage.core.exception.ResourceException.FolderDoesNotExistException;
 import com.example.cloudfilestorage.core.model.Resource;
 import com.example.cloudfilestorage.core.model.User;
 import com.example.cloudfilestorage.core.repository.ResourceRepository;
 import com.example.cloudfilestorage.core.utilities.ResourcesType;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.StatObjectArgs;
-import lombok.AllArgsConstructor;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import io.minio.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.example.cloudfilestorage.core.utilities.Utilities.*;
+
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class ResourceService {
 
     private final ResourceRepository resourceRepository;
     private final MinioClient minioClient;
     private final ResourceMapper resourceMapper;
 
+    @Value("${minio.buckets.user-files-bucket}")
+    private String userFilesBucketName;
 
-    public List<UploadResourcesResponse> loadFile(String path, MultipartFile file) throws RuntimeException, Exception {
-        User authenticatedUser = getAuthenticatedUserId();
-
-        String objectName = buildPath(
-                String.format("user-%d-files", authenticatedUser.getId()), path, file.getOriginalFilename()
-        );
-
-        isFileExist(objectName);
-
-        minioClient.putObject(
-                PutObjectArgs.builder()
-                        .bucket("user-files")
-                        .object(objectName)
-                        .stream(file.getInputStream(), file.getSize(), -1)
-                        .build()
-        );
-
-        return updateResourcesInfo(objectName, file, authenticatedUser);
-    }
-
-    private void isFileExist(String objectName) throws Exception {
-        minioClient.statObject(
-                StatObjectArgs.builder().bucket("user-files")
-                .object(objectName)
-                .build()
-        );
-    }
+    @Value("${minio.buckets.user-folder-pattern}")
+    private static String userFolderPattern;
 
 
-    private static String buildPath(String... parts) {
-        return String.join("/", parts);
-    }
+    @Transactional
+    public List<UploadResourcesResponse> fileUploadProcessing(String path, MultipartFile[] file, User user) throws FailedResourceLoadingException {
+        List<UploadResourcesResponse> responses = new ArrayList<>();
+        for (MultipartFile multipartFile : file) {
 
-    private static User getAuthenticatedUserId() throws RuntimeException {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (multipartFile.getOriginalFilename() == null || multipartFile.getOriginalFilename().isBlank()) {
+                continue;
+            }
 
-        if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
-            return (User) auth.getPrincipal();
+            String objectName = buildPath(
+                    getUserFolder(user), path, multipartFile.getOriginalFilename()
+            );
+
+            checkResourceAbsence(objectName);
+
+            loadFileInStorage(multipartFile, objectName);
+
+            responses.addAll(updateResourcesInfo(objectName, multipartFile, user));
         }
-        throw new UnauthorizedUserException("Необходима авторизация пользователя");
+
+        return responses;
     }
 
-    private List<UploadResourcesResponse> updateResourcesInfo(
-            String objectName, MultipartFile file, User authenticatedUser
-    ) {
-        List<String> resources = new ArrayList<>(Arrays.asList(objectName.split("/")));
-        Map<String, Resource> existResources =
-                (resourceRepository.findAllByFilePathIn(resources))
-                        .stream()
-                        .collect(Collectors.toMap(Resource::getFilePath, resource -> resource));
+    public void isFolderExists(String folderPath) {
+        if (!folderPath.endsWith("/")) {
+            folderPath += "/";
+        }
 
-        List<String> absoluteResourcesPaths = getAbsoluteResourcesPaths(resources);
+        try {
+            minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(userFilesBucketName)
+                            .prefix(folderPath)
+                            .delimiter("/")
+                            .maxKeys(1)
+                            .build());
+        } catch (Exception e) {
+            throw new FolderDoesNotExistException(e.getMessage());
+        }
+    }
+
+    @Transactional
+    public UploadResourcesResponse createNewFolderProcessing(String path, User user) throws FolderDoesNotExistException {
+        String parentPath = getParentPath(path);
+        String resourceName = getResourceName(path);
+
+        String absolutePath = buildPath(userFilesBucketName, parentPath, resourceName);
+
+        isFolderExists(parentPath);
+
+        createFolderInStorage(absolutePath);
+
+        return updateResourceInfo(resourceName, absolutePath, user);
+    }
+
+    private UploadResourcesResponse updateResourceInfo(String resourcesName,
+                                                            String path,
+                                                            User user) throws FailedResourceLoadingException {
+        Resource newResource = createNewResource(resourcesName, path, user, 0);
+        resourceRepository.save(newResource);
+        return resourceMapper.toDTO(newResource);
+    }
+
+    public void createFolderInStorage(String folderName) {
+        if (!folderName.endsWith("/")) {
+            folderName += "/";
+        }
+
+        try {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(userFilesBucketName)
+                            .object(folderName)
+                            .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
+                            .build());
+        } catch (Exception e) {
+            throw new FailedResourceLoadingException(e.getMessage());
+        }
+    }
+
+    private void loadFileInStorage(MultipartFile file, String objectName) throws FailedResourceLoadingException {
+        try {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(userFilesBucketName)
+                            .object(objectName)
+                            .stream(file.getInputStream(), file.getSize(), -1)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new FailedResourceLoadingException(e.getMessage());
+        }
+    }
+
+    private static String getUserFolder(User authenticatedUser) {
+        return String.format(userFolderPattern, authenticatedUser.getId());
+    }
+
+    private void checkResourceAbsence(String objectName) throws FailedResourceLoadingException {
+        try {
+            minioClient.statObject(
+                    StatObjectArgs.builder()
+                            .bucket(userFilesBucketName)
+                            .object(objectName)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new FileAlreadyExistException(e.getMessage());
+        }
+    }
+
+    private List<UploadResourcesResponse> updateResourcesInfo(String objectName, MultipartFile file, User user) {
+        List<String> resources = new ArrayList<>(Arrays.asList(objectName.split("/")));
+        Map<String, Resource> existResources = resourceRepository.findAllByFilePathIn(resources)
+                .stream()
+                .collect(Collectors.toMap(Resource::getFilePath, resource -> resource));
+
+        StringBuilder absolutePaths = new StringBuilder(resources.get(0));
 
         List<UploadResourcesResponse> uploadInfo = new ArrayList<>();
 
-        for (int i = 0; i < resources.size(); i++) {
-            String absolutePath = absoluteResourcesPaths.get(i);
+        for (String resource : resources) {
+            absolutePaths.append("/").append(resource);
+            String absolutePath = absolutePaths.toString();
 
             if (!existResources.containsKey(absolutePath)) {
-                Resource newResource = createNewResources(
-                        resources.get(i),
+                Resource newResource = createNewResource(
+                        resource,
                         absolutePath,
-                        authenticatedUser,
+                        user,
                         file.getSize()
                 );
                 existResources.put(absolutePath, newResource);
 
                 uploadInfo.add(resourceMapper.toDTO(newResource));
-            }
-            else {
-                updateResources(existResources.get(absolutePath), file.getSize());
             }
         }
 
@@ -108,36 +180,14 @@ public class ResourceService {
         return uploadInfo;
     }
 
-    private static List<String> getAbsoluteResourcesPaths(List<String> resources) {
-        List<String> absoluteResourcesPaths = new ArrayList<>(resources.size());
-
-        StringBuilder absolutePath = new StringBuilder(resources.get(0));
-
-        for (int i = 0; i < resources.size(); i++) {
-            absolutePath.append("/").append(resources.get(i));
-            absoluteResourcesPaths.add(absolutePath.toString());
-        }
-
-        return absoluteResourcesPaths;
-    }
-
-    private void updateResources(Resource resource, long fileSize) {
-        resource.setSize(fileSize);
-    }
-
-
-    private Resource createNewResources(
-            String resourcesName,
-            String absolutePath,
-            User ownerId,
-            long size
-    ) {
+    private Resource createNewResource(String resourcesName, String absolutePath, User ownerId, long size) {
         return Resource.builder()
                 .fileName(resourcesName)
                 .filePath(absolutePath)
                 .ownerId(ownerId)
-                .size(size)
+                .size(resourcesName.contains(".") ? size : 0)
                 .type(resourcesName.contains(".") ? ResourcesType.FILE : ResourcesType.DIRECTORY)
                 .build();
     }
+
 }

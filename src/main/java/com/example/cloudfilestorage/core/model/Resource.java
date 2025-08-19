@@ -34,5 +34,6 @@ public class Resource {
     @Column(name = "type", nullable = false)
     private ResourcesType type;
 
-    public Resource() {}
+    public Resource() {
+    }
 }
