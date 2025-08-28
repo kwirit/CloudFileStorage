@@ -1,45 +1,74 @@
 package com.example.cloudfilestorage.core.service;
 
-import com.example.cloudfilestorage.api.dto.UploadResourcesResponse;
-import com.example.cloudfilestorage.api.mapper.ResourceMapper;
-import com.example.cloudfilestorage.core.exception.ResourceException.FailedResourceLoadingException;
+import com.example.cloudfilestorage.api.dto.ResourcesResponse;
+import com.example.cloudfilestorage.core.exception.ResourceException.FailedResourceOperationsException;
 import com.example.cloudfilestorage.core.exception.ResourceException.FileAlreadyExistException;
+import com.example.cloudfilestorage.core.exception.ResourceException.FileDoesNotExistException;
 import com.example.cloudfilestorage.core.exception.ResourceException.FolderDoesNotExistException;
-import com.example.cloudfilestorage.core.model.Resource;
 import com.example.cloudfilestorage.core.model.User;
-import com.example.cloudfilestorage.core.repository.ResourceRepository;
-import com.example.cloudfilestorage.core.utilities.ResourcesType;
-import io.minio.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.*;
-import java.util.stream.Collectors;
 
-import static com.example.cloudfilestorage.core.utilities.Utilities.*;
+import static com.example.cloudfilestorage.core.utilities.PathUtilsService.*;
 
 @Service
 @RequiredArgsConstructor
 public class ResourceService {
 
-    private final ResourceRepository resourceRepository;
-    private final MinioClient minioClient;
-    private final ResourceMapper resourceMapper;
+    private final ResourcePersistenceService resourcePersistenceService;
+    private final MinioService minioService;
+
 
     @Value("${minio.buckets.user-files-bucket}")
     private String userFilesBucketName;
 
-    @Value("${minio.buckets.user-folder-pattern}")
-    private static String userFolderPattern;
 
+
+    public InputStream downloadFileProcessing(String path, User user) {
+        String absolutePath = getAbsolutPath(path, user);
+
+        minioService.isFileExist(absolutePath);
+        return minioService.getFile(absolutePath);
+    }
+
+    public InputStream downloadFolderAsZipProcessing(String path, User user) {
+        String absolutePath = getAbsolutPath(path, user);
+
+        minioService.isFolderExist(absolutePath);
+        return minioService.getFolderAsZip(absolutePath);
+    }
+
+
+    public ResourcesResponse getResourcesInfoProcessing(String path, User user) throws FileDoesNotExistException, FolderDoesNotExistException{
+        String absolutePath = getAbsolutPath(path, user);
+        String resourceName = getResourceName(absolutePath);
+
+        if (resourceName.contains(".")) {
+            minioService.isFileExist(absolutePath);
+        }
+        else {
+            minioService.isFolderExist(absolutePath);
+        }
+        return resourcePersistenceService.getResourceInfo(absolutePath);
+    }
+
+    public List<ResourcesResponse> getInfoAboutContentsDirectory(String path, User user) {
+        String absolutePath = getAbsolutPath(path, user);
+
+        minioService.isFolderExist(absolutePath);
+
+        return minioService.getInfoAboutContentsDirectory(path);
+    }
 
     @Transactional
-    public List<UploadResourcesResponse> fileUploadProcessing(String path, MultipartFile[] file, User user) throws FailedResourceLoadingException {
-        List<UploadResourcesResponse> responses = new ArrayList<>();
+    public List<ResourcesResponse> fileUploadProcessing(String path, MultipartFile[] file, User user) throws FailedResourceOperationsException, FileAlreadyExistException {
+        List<ResourcesResponse> responses = new ArrayList<>();
         for (MultipartFile multipartFile : file) {
 
             if (multipartFile.getOriginalFilename() == null || multipartFile.getOriginalFilename().isBlank()) {
@@ -50,144 +79,130 @@ public class ResourceService {
                     getUserFolder(user), path, multipartFile.getOriginalFilename()
             );
 
-            checkResourceAbsence(objectName);
 
-            loadFileInStorage(multipartFile, objectName);
+            try {
+                if (minioService.isFileExist(objectName)) {
+                    throw new FileAlreadyExistException();
+                }
+            } catch (FileDoesNotExistException ignored) {}
 
-            responses.addAll(updateResourcesInfo(objectName, multipartFile, user));
+            minioService.loadFileInStorage(multipartFile, objectName);
+
+            responses.addAll(resourcePersistenceService.updateResourcesInfo(objectName, multipartFile, user));
         }
 
         return responses;
     }
 
-    public void isFolderExists(String folderPath) {
-        if (!folderPath.endsWith("/")) {
-            folderPath += "/";
-        }
+    @Transactional
+    public ResourcesResponse createNewFolderProcessing(String path, User user) throws FolderDoesNotExistException {
+        String absolutePath = getAbsolutPath(path, user);
 
-        try {
-            minioClient.listObjects(
-                    ListObjectsArgs.builder()
-                            .bucket(userFilesBucketName)
-                            .prefix(folderPath)
-                            .delimiter("/")
-                            .maxKeys(1)
-                            .build());
-        } catch (Exception e) {
-            throw new FolderDoesNotExistException(e.getMessage());
-        }
+        String parentPath = getParentPath(absolutePath);
+        String resourceName = getResourceName(absolutePath);
+
+        minioService.isFolderExist(parentPath);
+
+        minioService.createFolderInStorage(absolutePath);
+
+        return resourcePersistenceService.updateFolderInfo(resourceName, absolutePath, user);
     }
 
     @Transactional
-    public UploadResourcesResponse createNewFolderProcessing(String path, User user) throws FolderDoesNotExistException {
-        String parentPath = getParentPath(path);
-        String resourceName = getResourceName(path);
+    public void deleteResourceProcessing(String path, User user) throws FolderDoesNotExistException {
+        String absolutePath = getAbsolutPath(path, user);
+        String resourceName = getResourceName(absolutePath);
 
-        String absolutePath = buildPath(userFilesBucketName, parentPath, resourceName);
-
-        isFolderExists(parentPath);
-
-        createFolderInStorage(absolutePath);
-
-        return updateResourceInfo(resourceName, absolutePath, user);
-    }
-
-    private UploadResourcesResponse updateResourceInfo(String resourcesName,
-                                                            String path,
-                                                            User user) throws FailedResourceLoadingException {
-        Resource newResource = createNewResource(resourcesName, path, user, 0);
-        resourceRepository.save(newResource);
-        return resourceMapper.toDTO(newResource);
-    }
-
-    public void createFolderInStorage(String folderName) {
-        if (!folderName.endsWith("/")) {
-            folderName += "/";
+        if (resourceName.contains(".")) {
+            deleteFileProcessing(absolutePath);
+        } else {
+            deleteFolderProcessing(absolutePath);
         }
 
-        try {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(userFilesBucketName)
-                            .object(folderName)
-                            .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
-                            .build());
-        } catch (Exception e) {
-            throw new FailedResourceLoadingException(e.getMessage());
-        }
+        minioService.isFolderExist(getParentPath(path));
     }
 
-    private void loadFileInStorage(MultipartFile file, String objectName) throws FailedResourceLoadingException {
-        try {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(userFilesBucketName)
-                            .object(objectName)
-                            .stream(file.getInputStream(), file.getSize(), -1)
-                            .build()
-            );
-        } catch (Exception e) {
-            throw new FailedResourceLoadingException(e.getMessage());
+    @Transactional
+    public void deleteFolderProcessing(String path) throws FolderDoesNotExistException {
+        minioService.isFolderExist(path);
+
+        minioService.deleteFolderInStorage(path);
+
+        resourcePersistenceService.deleteResource(path);
+    }
+
+    @Transactional
+    public void deleteFileProcessing(String path) throws FileDoesNotExistException {
+        minioService.isFileExist(path);
+
+        minioService.deleteFileInStorage(path);
+
+        resourcePersistenceService.deleteResource(path);
+    }
+
+    public ResourcesResponse moveAndRenameResourceProcessing(String from, String to, User user) {
+        return (isRename(from, to))
+                ? renameResourceProcessing(from, to, user)
+                : moveResourceProcessing(from, to, user);
+    }
+
+    public ResourcesResponse renameResourceProcessing(String from, String to, User user) throws FileDoesNotExistException, FolderDoesNotExistException {
+        String absolutePath = getAbsolutPath(from, user);
+        String resourceName = getResourceName(absolutePath);
+        if (resourceName.contains(".")) {
+            return renameFileProcessing(absolutePath, to, user);
+        }
+        else {
+            return moveFolderProcessing(absolutePath, to, user);
         }
     }
 
-    private static String getUserFolder(User authenticatedUser) {
-        return String.format(userFolderPattern, authenticatedUser.getId());
-    }
-
-    private void checkResourceAbsence(String objectName) throws FailedResourceLoadingException {
-        try {
-            minioClient.statObject(
-                    StatObjectArgs.builder()
-                            .bucket(userFilesBucketName)
-                            .object(objectName)
-                            .build()
-            );
-        } catch (Exception e) {
-            throw new FileAlreadyExistException(e.getMessage());
+    public ResourcesResponse moveResourceProcessing(String from, String to, User user) throws FileDoesNotExistException {
+        String absolutePath = getAbsolutPath(from, user);
+        String resourceName = getResourceName(absolutePath);
+        if (resourceName.contains(".")) {
+            return renameFileProcessing(absolutePath, to, user);
+        }
+        else {
+            return moveFolderProcessing(absolutePath, to, user);
         }
     }
 
-    private List<UploadResourcesResponse> updateResourcesInfo(String objectName, MultipartFile file, User user) {
-        List<String> resources = new ArrayList<>(Arrays.asList(objectName.split("/")));
-        Map<String, Resource> existResources = resourceRepository.findAllByFilePathIn(resources)
-                .stream()
-                .collect(Collectors.toMap(Resource::getFilePath, resource -> resource));
 
-        StringBuilder absolutePaths = new StringBuilder(resources.get(0));
+    public ResourcesResponse renameFileProcessing(String absolutePathFrom, String to, User user)
+            throws FileDoesNotExistException{
+        String absolutePathTo = getAbsolutPath(to, user);
 
-        List<UploadResourcesResponse> uploadInfo = new ArrayList<>();
+        minioService.isFileExist(absolutePathFrom);
 
-        for (String resource : resources) {
-            absolutePaths.append("/").append(resource);
-            String absolutePath = absolutePaths.toString();
+        minioService.copyFile(absolutePathFrom, absolutePathTo);
 
-            if (!existResources.containsKey(absolutePath)) {
-                Resource newResource = createNewResource(
-                        resource,
-                        absolutePath,
-                        user,
-                        file.getSize()
-                );
-                existResources.put(absolutePath, newResource);
+        minioService.deleteFileInStorage(absolutePathFrom);
 
-                uploadInfo.add(resourceMapper.toDTO(newResource));
-            }
-        }
-
-        resourceRepository.saveAll(existResources.values());
-
-        return uploadInfo;
+        resourcePersistenceService.deleteResource(absolutePathFrom);
+        return resourcePersistenceService.updateFileInfo(
+                getResourceName(absolutePathTo),
+                absolutePathTo,
+                user,
+                minioService.getFileSize(absolutePathFrom));
     }
 
-    private Resource createNewResource(String resourcesName, String absolutePath, User ownerId, long size) {
-        return Resource.builder()
-                .fileName(resourcesName)
-                .filePath(absolutePath)
-                .ownerId(ownerId)
-                .size(resourcesName.contains(".") ? size : 0)
-                .type(resourcesName.contains(".") ? ResourcesType.FILE : ResourcesType.DIRECTORY)
-                .build();
-    }
+    public ResourcesResponse moveFolderProcessing(String absolutePathFrom, String to, User user)
+            throws FolderDoesNotExistException{
+        String absolutePathTo = getAbsolutPath(to, user);
 
+        minioService.isFolderExist(absolutePathFrom);
+
+        minioService.copyFolder(absolutePathFrom, absolutePathTo);
+
+        minioService.deleteFolderInStorage(absolutePathFrom);
+
+        resourcePersistenceService.deleteResource(absolutePathFrom);
+
+        return resourcePersistenceService.updateFolderInfo(
+                getResourceName(absolutePathTo),
+                absolutePathTo,
+                user
+        );
+    }
 }

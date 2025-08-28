@@ -12,7 +12,7 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
 @AllArgsConstructor
-public class UploadResourcesResponse {
+public class ResourcesResponse {
     private String path;
     private String name;
     private long size;

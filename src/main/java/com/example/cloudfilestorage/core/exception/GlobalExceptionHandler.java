@@ -3,7 +3,7 @@ package com.example.cloudfilestorage.core.exception;
 import com.example.cloudfilestorage.core.exception.AuthException.UserAlreadyExistsException;
 import com.example.cloudfilestorage.core.exception.AuthException.UserNotFoundException;
 import com.example.cloudfilestorage.core.exception.AuthException.ValidationAuthException;
-import com.example.cloudfilestorage.core.exception.ResourceException.FailedResourceLoadingException;
+import com.example.cloudfilestorage.core.exception.ResourceException.FailedResourceOperationsException;
 import com.example.cloudfilestorage.core.exception.ResourceException.FileAlreadyExistException;
 import com.example.cloudfilestorage.core.exception.ResourceException.UnauthorizedUserException;
 import org.springframework.http.HttpStatus;
@@ -40,7 +40,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ex.getMessage());
     }
 
-    @ExceptionHandler(FailedResourceLoadingException.class)
+    @ExceptionHandler(FailedResourceOperationsException.class)
     public ResponseEntity<String> handleFailedResourceLoadingException(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ex.getMessage());
     }
