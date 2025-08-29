@@ -25,11 +25,6 @@ public class ResourceService {
     private final MinioService minioService;
 
 
-    @Value("${minio.buckets.user-files-bucket}")
-    private String userFilesBucketName;
-
-
-
     public InputStream downloadFileProcessing(String path, User user) {
         String absolutePath = getAbsolutPath(path, user);
 
@@ -66,7 +61,6 @@ public class ResourceService {
         return minioService.getInfoAboutContentsDirectory(path);
     }
 
-    @Transactional
     public List<ResourcesResponse> fileUploadProcessing(String path, MultipartFile[] file, User user) throws FailedResourceOperationsException, FileAlreadyExistException {
         List<ResourcesResponse> responses = new ArrayList<>();
         for (MultipartFile multipartFile : file) {
@@ -94,7 +88,6 @@ public class ResourceService {
         return responses;
     }
 
-    @Transactional
     public ResourcesResponse createNewFolderProcessing(String path, User user) throws FolderDoesNotExistException {
         String absolutePath = getAbsolutPath(path, user);
 
@@ -108,7 +101,6 @@ public class ResourceService {
         return resourcePersistenceService.updateFolderInfo(resourceName, absolutePath, user);
     }
 
-    @Transactional
     public void deleteResourceProcessing(String path, User user) throws FolderDoesNotExistException {
         String absolutePath = getAbsolutPath(path, user);
         String resourceName = getResourceName(absolutePath);
@@ -122,7 +114,6 @@ public class ResourceService {
         minioService.isFolderExist(getParentPath(path));
     }
 
-    @Transactional
     public void deleteFolderProcessing(String path) throws FolderDoesNotExistException {
         minioService.isFolderExist(path);
 
@@ -131,7 +122,6 @@ public class ResourceService {
         resourcePersistenceService.deleteResource(path);
     }
 
-    @Transactional
     public void deleteFileProcessing(String path) throws FileDoesNotExistException {
         minioService.isFileExist(path);
 
