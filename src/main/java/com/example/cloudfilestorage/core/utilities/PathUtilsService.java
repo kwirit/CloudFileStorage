@@ -28,7 +28,15 @@ public class PathUtilsService {
     }
 
     public static String getResourceName(String fullPath) {
-        if (fullPath == null || fullPath.lastIndexOf('/') == -1) {
+        if (fullPath.endsWith("/")) {
+            String[] parts = fullPath.split("/");
+
+            if (parts.length > 0) {
+                return parts[parts.length - 1];
+            }
+        }
+
+        if (fullPath.lastIndexOf('/') == -1) {
             return "";
         }
 

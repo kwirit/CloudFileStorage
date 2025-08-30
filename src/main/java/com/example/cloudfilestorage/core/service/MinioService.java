@@ -7,6 +7,7 @@ import com.example.cloudfilestorage.core.exception.ResourceException.FailedResou
 import com.example.cloudfilestorage.core.exception.ResourceException.FileDoesNotExistException;
 import com.example.cloudfilestorage.core.exception.ResourceException.FolderDoesNotExistException;
 import io.minio.*;
+import io.minio.messages.DeleteError;
 import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -52,16 +55,31 @@ public class MinioService {
         }
 
         try {
-            minioClient.listObjects(
+            Iterable<Result<Item>> results = minioClient.listObjects(
                     ListObjectsArgs.builder()
                             .bucket(userFilesBucketName)
                             .prefix(folderPath)
                             .delimiter("/")
                             .maxKeys(1)
                             .build());
-            return true;
+            List<DeleteObject> objectsToDelete = StreamSupport.stream(results.spliterator(), false)
+                    .map(itemResult -> {
+                        try {
+                            return new DeleteObject(itemResult.get().objectName());
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    })
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            if (!objectsToDelete.isEmpty()) {
+                return true;
+            }
+            throw new FolderDoesNotExistException(folderPath);
+        } catch (FolderDoesNotExistException e) {
+            throw e;
         } catch (Exception e) {
-            throw new FolderDoesNotExistException(e.getMessage());
+            throw new FailedResourceOperationsException(e.getMessage());
         }
     }
 
@@ -110,9 +128,6 @@ public class MinioService {
     }
 
     public void deleteFolderInStorage(String path) throws FailedResourceOperationsException {
-        if (!path.endsWith("/")) {
-            path += "/";
-        }
 
         try {
             Iterable<Result<Item>> results = minioClient.listObjects(
@@ -123,18 +138,42 @@ public class MinioService {
                             .build()
             );
 
-            List<DeleteObject> objectsToDelete = new ArrayList<>();
+            List<DeleteObject> objectsToDelete = StreamSupport.stream(results.spliterator(), false)
+                    .map(itemResult -> {
+                        try {
+                            return new DeleteObject(itemResult.get().objectName());
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    })
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toList());
 
-            for (Result<Item> result : results) {
-                objectsToDelete.add(new DeleteObject(result.get().objectName()));
+
+            if (!objectsToDelete.isEmpty()) {
+                Iterable<Result<DeleteError>> errorResults = minioClient.removeObjects(
+                        RemoveObjectsArgs.builder()
+                                .bucket(userFilesBucketName)
+                                .objects(objectsToDelete)
+                                .build()
+                );
+                boolean hasErrors = false;
+
+                StringBuilder errors = new StringBuilder();
+
+                for (Result<DeleteError> errorResult : errorResults) {
+                    DeleteError error = errorResult.get();
+                    errors.append(
+                            String.format("Ошибка при удалении объекта '%s'; %s", error.objectName(), error.message())
+                    );
+                    hasErrors = true;
+                }
+
+                if (hasErrors) {
+                    throw new FailedResourceOperationsException("Не удалось удалить один или несколько объектов." + errors);
+                }
             }
 
-            minioClient.removeObjects(
-                    RemoveObjectsArgs.builder()
-                            .bucket(userFilesBucketName)
-                            .objects(objectsToDelete)
-                            .build()
-            );
         } catch (Exception e) {
             throw new FailedResourceOperationsException(e.getMessage());
         }
@@ -211,10 +250,6 @@ public class MinioService {
     }
 
     public void copyFile(String from, String to) throws FailedResourceOperationsException {
-        if (!from.endsWith("/")) {
-            from += "/";
-        }
-
         try {
             minioClient.copyObject(
                     CopyObjectArgs.builder()
@@ -283,7 +318,6 @@ public class MinioService {
             throw new FailedResourceOperationsException(e.getMessage());
         }
     }
-
 
 
 }
