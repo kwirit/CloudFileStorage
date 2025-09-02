@@ -50,7 +50,9 @@ public class ResourcePersistenceService {
 
         List<ResourcesResponse> uploadInfo = new ArrayList<>();
 
-        for (String resource : resources) {
+        for (int i = 1; i < resources.size(); i++) {
+            String resource = resources.get(i);
+
             absolutePaths.append("/").append(resource);
             String absolutePath = absolutePaths.toString();
 

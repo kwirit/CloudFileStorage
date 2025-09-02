@@ -300,7 +300,7 @@ class MinioServiceTest {
         assertEquals(minioService.getFileSize(absolutePath), file.getSize());
     }
 
-    public MultipartFile createTextMockFile(String fileName, String content) throws Exception {
+    public static MultipartFile createTextMockFile(String fileName, String content) throws Exception {
         return new MockMultipartFile(
                 "file",
                 fileName,

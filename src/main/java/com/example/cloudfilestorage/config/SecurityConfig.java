@@ -33,8 +33,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
+                .securityContext(context -> context.requireExplicitSave(false))
                 .logout(logout -> logout
-                        .logoutUrl("/api/auth/logout")
+                        .logoutUrl("/api/auth/sign-out")
                         .logoutSuccessHandler((request, response, authentication) -> {
                             response.setStatus(HttpStatus.NO_CONTENT.value());
                         })
@@ -53,10 +54,5 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public HttpSessionSecurityContextRepository securityContextRepository() {
-        return new HttpSessionSecurityContextRepository();
     }
 }

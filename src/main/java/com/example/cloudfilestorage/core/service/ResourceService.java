@@ -6,8 +6,11 @@ import com.example.cloudfilestorage.core.exception.ResourceException.FileAlready
 import com.example.cloudfilestorage.core.exception.ResourceException.FileDoesNotExistException;
 import com.example.cloudfilestorage.core.exception.ResourceException.FolderDoesNotExistException;
 import com.example.cloudfilestorage.core.model.User;
+import com.example.cloudfilestorage.core.repository.ResourceRepository;
+import com.example.cloudfilestorage.core.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,47 +24,63 @@ import static com.example.cloudfilestorage.core.utilities.PathUtilsService.*;
 @RequiredArgsConstructor
 public class ResourceService {
 
+    private final UserService userService;
     private final ResourcePersistenceService resourcePersistenceService;
     private final MinioService minioService;
 
 
-    public InputStream downloadFileProcessing(String path, User user) {
+    public InputStream downloadFileProcessing(String path) {
+        User user = userService.getCurrentUser();
         String absolutePath = getAbsolutPath(path, user);
 
-        minioService.isFileExist(absolutePath);
+        if (!minioService.isFileExist(absolutePath)) {
+            throw new FileDoesNotExistException(String.format("Файл по пути: %s не найден", path));
+        }
         return minioService.getFile(absolutePath);
     }
 
-    public InputStream downloadFolderAsZipProcessing(String path, User user) {
+    public InputStream downloadFolderAsZipProcessing(String path) {
+        User user = userService.getCurrentUser();
         String absolutePath = getAbsolutPath(path, user);
 
-        minioService.isFolderExist(absolutePath);
+        if (!minioService.isFolderExist(absolutePath)) {
+            throw new FolderDoesNotExistException(String.format("Папка по пути: %s не найдена", path));
+        }
         return minioService.getFolderAsZip(absolutePath);
     }
 
 
-    public ResourcesResponse getResourcesInfoProcessing(String path, User user) throws FileDoesNotExistException, FolderDoesNotExistException{
+    public ResourcesResponse getResourcesInfoProcessing(String path) throws FileDoesNotExistException, FolderDoesNotExistException{
+        User user = userService.getCurrentUser();
         String absolutePath = getAbsolutPath(path, user);
         String resourceName = getResourceName(absolutePath);
 
         if (resourceName.contains(".")) {
-            minioService.isFileExist(absolutePath);
+            if (!minioService.isFileExist(absolutePath)) {
+                throw new FileDoesNotExistException(String.format("Файл по пути: %s не найден", path));
+            }
         }
         else {
-            minioService.isFolderExist(absolutePath);
+            if (!minioService.isFolderExist(absolutePath)) {
+                throw new FolderDoesNotExistException(String.format("Папка по пути: %s не найдена", path));
+            }
         }
         return resourcePersistenceService.getResourceInfo(absolutePath);
     }
 
-    public List<ResourcesResponse> getInfoAboutContentsDirectory(String path, User user) {
+    public List<ResourcesResponse> getInfoAboutContentsDirectory(String path) {
+        User user = userService.getCurrentUser();
         String absolutePath = getAbsolutPath(path, user);
 
-        minioService.isFolderExist(absolutePath);
+        if (!minioService.isFolderExist(absolutePath)) {
+            throw new FolderDoesNotExistException(String.format("Папка по пути: %s не найдена", path));
+        }
 
-        return minioService.getInfoAboutContentsDirectory(path);
+        return minioService.getInfoAboutContentsDirectory(absolutePath);
     }
 
-    public List<ResourcesResponse> fileUploadProcessing(String path, MultipartFile[] file, User user) throws FailedResourceOperationsException, FileAlreadyExistException {
+    public List<ResourcesResponse> fileUploadProcessing(String path, MultipartFile[] file) throws FailedResourceOperationsException, FileAlreadyExistException {
+        User user = userService.getCurrentUser();
         List<ResourcesResponse> responses = new ArrayList<>();
         for (MultipartFile multipartFile : file) {
 
@@ -74,11 +93,9 @@ public class ResourceService {
             );
 
 
-            try {
-                if (minioService.isFileExist(objectName)) {
-                    throw new FileAlreadyExistException();
-                }
-            } catch (FileDoesNotExistException ignored) {}
+            if (minioService.isFileExist(objectName)) {
+                throw new FileAlreadyExistException();
+            }
 
             minioService.loadFileInStorage(multipartFile, objectName);
 
@@ -88,20 +105,24 @@ public class ResourceService {
         return responses;
     }
 
-    public ResourcesResponse createNewFolderProcessing(String path, User user) throws FolderDoesNotExistException {
+    public ResourcesResponse createNewFolderProcessing(String path) throws FolderDoesNotExistException {
+        User user = userService.getCurrentUser();
         String absolutePath = getAbsolutPath(path, user);
 
         String parentPath = getParentPath(absolutePath);
         String resourceName = getResourceName(absolutePath);
 
-        minioService.isFolderExist(parentPath);
+        if (!minioService.isFolderExist(parentPath)) {
+            throw new FolderDoesNotExistException(String.format("Папка по пути: %s не найдена", path));
+        }
 
         minioService.createFolderInStorage(absolutePath);
 
         return resourcePersistenceService.updateFolderInfo(resourceName, absolutePath, user);
     }
 
-    public void deleteResourceProcessing(String path, User user) throws FolderDoesNotExistException {
+    public void deleteResourceProcessing(String path) throws FolderDoesNotExistException {
+        User user = userService.getCurrentUser();
         String absolutePath = getAbsolutPath(path, user);
         String resourceName = getResourceName(absolutePath);
 
@@ -111,11 +132,13 @@ public class ResourceService {
             deleteFolderProcessing(absolutePath);
         }
 
-        minioService.isFolderExist(getParentPath(path));
+        minioService.isFolderExist(getParentPath(absolutePath));
     }
 
     public void deleteFolderProcessing(String path) throws FolderDoesNotExistException {
-        minioService.isFolderExist(path);
+        if (!minioService.isFolderExist(path)) {
+            throw new FolderDoesNotExistException(String.format("Папка по пути: %s не найдена", path));
+        }
 
         minioService.deleteFolderInStorage(path);
 
@@ -123,29 +146,20 @@ public class ResourceService {
     }
 
     public void deleteFileProcessing(String path) throws FileDoesNotExistException {
-        minioService.isFileExist(path);
+        if (!minioService.isFileExist(path)) {
+            throw new FileDoesNotExistException(String.format("Файл по пути: %s не найден", path));
+        }
 
         minioService.deleteFileInStorage(path);
 
         resourcePersistenceService.deleteResource(path);
     }
 
-    public ResourcesResponse moveAndRenameResourceProcessing(String from, String to, User user) {
-        return (isRename(from, to))
-                ? renameResourceProcessing(from, to, user)
-                : moveResourceProcessing(from, to, user);
+    public ResourcesResponse moveAndRenameResourceProcessing(String from, String to) {
+        User user = userService.getCurrentUser();
+        return moveResourceProcessing(from, to, user);
     }
 
-    public ResourcesResponse renameResourceProcessing(String from, String to, User user) throws FileDoesNotExistException, FolderDoesNotExistException {
-        String absolutePath = getAbsolutPath(from, user);
-        String resourceName = getResourceName(absolutePath);
-        if (resourceName.contains(".")) {
-            return renameFileProcessing(absolutePath, to, user);
-        }
-        else {
-            return moveFolderProcessing(absolutePath, to, user);
-        }
-    }
 
     public ResourcesResponse moveResourceProcessing(String from, String to, User user) throws FileDoesNotExistException {
         String absolutePath = getAbsolutPath(from, user);
@@ -163,13 +177,16 @@ public class ResourceService {
             throws FileDoesNotExistException{
         String absolutePathTo = getAbsolutPath(to, user);
 
-        minioService.isFileExist(absolutePathFrom);
+        if (!minioService.isFileExist(absolutePathFrom)) {
+            throw new FileDoesNotExistException("Файл источника не существует");
+        };
 
         minioService.copyFile(absolutePathFrom, absolutePathTo);
 
         minioService.deleteFileInStorage(absolutePathFrom);
 
         resourcePersistenceService.deleteResource(absolutePathFrom);
+
         return resourcePersistenceService.updateFileInfo(
                 getResourceName(absolutePathTo),
                 absolutePathTo,
@@ -181,7 +198,9 @@ public class ResourceService {
             throws FolderDoesNotExistException{
         String absolutePathTo = getAbsolutPath(to, user);
 
-        minioService.isFolderExist(absolutePathFrom);
+        if (!minioService.isFolderExist(absolutePathFrom)){
+            throw new FolderDoesNotExistException(String.format("Папка по пути: %s не найден", absolutePathFrom));
+        }
 
         minioService.copyFolder(absolutePathFrom, absolutePathTo);
 

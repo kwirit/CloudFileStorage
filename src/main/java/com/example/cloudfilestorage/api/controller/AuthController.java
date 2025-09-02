@@ -26,7 +26,6 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final UserService userService;
-    private final SecurityContextRepository securityContextRepository;
 
     @PostMapping("/sign-up")
     public ResponseEntity<?> signUpController(@Valid @RequestBody SignInUpRequest requestData) {
@@ -38,9 +37,7 @@ public class AuthController {
     }
 
     @PostMapping("/sign-in")
-    public ResponseEntity<?> signInController(@Valid @RequestBody SignInUpRequest requestData,
-                                              HttpServletRequest request,
-                                              HttpServletResponse response) {
+    public ResponseEntity<?> signInController(@Valid @RequestBody SignInUpRequest requestData) {
         UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                 requestData.getUsername(),
                 requestData.getPassword()
@@ -48,16 +45,10 @@ public class AuthController {
 
         Authentication authentication = authenticationManager.authenticate(authToken);
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        securityContextRepository.saveContext(SecurityContextHolder.getContext(), request, response);
 
         return ResponseEntity.ok(new UserResponse(requestData.getUsername()));
     } // TODO: добавить кастомную валидацию пароля и логина
 
     @PostMapping("/sign-out")
     public void signOutController() {}
-
-    @GetMapping("/pupupu-pupu")
-    public ResponseEntity<?> bratsummer(HttpServletRequest request) {
-        return ResponseEntity.ok(new UserResponse(request.getParameter("username")));
-    }
 }

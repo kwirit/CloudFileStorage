@@ -6,16 +6,21 @@ import org.springframework.beans.factory.annotation.Value;
 
 public class PathUtilsService {
 
-    @Value("${minio.buckets.user-folder-pattern}")
-    public static String userFolderPattern;
-
+    public static String userFolderPattern = "user-%s-files";
 
     public static String getUserFolder(User authenticatedUser) {
         return String.format(userFolderPattern, authenticatedUser.getId());
     }
 
     public static String buildPath(String... parts) {
-        return String.join("/", parts);
+        StringBuilder path = new StringBuilder();
+        for (String part : parts) {
+            path.append(part);
+            if (!part.contains(".") && !part.endsWith("/")) {
+                path.append("/");
+            }
+        }
+        return path.toString();
     }
 
     public static String getParentPath(String fullPath) {

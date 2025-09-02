@@ -13,6 +13,7 @@ import io.minio.messages.Item;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.ErrorResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
@@ -44,6 +45,8 @@ public class MinioService {
                             .build()
             );
             return true;
+        } catch (ErrorResponseException e) {
+            return false;
         } catch (Exception e) {
             throw new FileDoesNotExistException(e.getMessage());
         }
@@ -59,25 +62,10 @@ public class MinioService {
                     ListObjectsArgs.builder()
                             .bucket(userFilesBucketName)
                             .prefix(folderPath)
-                            .delimiter("/")
                             .maxKeys(1)
+                            .delimiter("/")
                             .build());
-            List<DeleteObject> objectsToDelete = StreamSupport.stream(results.spliterator(), false)
-                    .map(itemResult -> {
-                        try {
-                            return new DeleteObject(itemResult.get().objectName());
-                        } catch (Exception e) {
-                            return null;
-                        }
-                    })
-                    .filter(java.util.Objects::nonNull)
-                    .toList();
-            if (!objectsToDelete.isEmpty()) {
-                return true;
-            }
-            throw new FolderDoesNotExistException(folderPath);
-        } catch (FolderDoesNotExistException e) {
-            throw e;
+            return results.iterator().hasNext();
         } catch (Exception e) {
             throw new FailedResourceOperationsException(e.getMessage());
         }

@@ -32,26 +32,17 @@ public class ResourceController {
 
     @GetMapping("/{path}")
     public ResponseEntity<?> getResourceInfo(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String path,
-            Authentication auth) {
-        return ResponseEntity
-                .ok()
-                .body(
-                        resourceService.getResourcesInfoProcessing(path, (User) auth.getPrincipal())
-                );
-
-    }
-    @PostMapping("/{path}")
-    public ResponseEntity<?> uploadFile(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String path,
-            @RequestParam MultipartFile[] file,
-            Authentication auth
+            @PathVariable String path
     ) {
-        List<ResourcesResponse> resourcesResponse = resourceService.fileUploadProcessing(
-                path, file, (User) auth.getPrincipal()
-        );
+        return ResponseEntity.ok(resourceService.getResourcesInfoProcessing(path));
+    }
+
+    @PostMapping
+    public ResponseEntity<?> uploadFile(
+            @RequestParam("path") String path,
+            @RequestParam("file") MultipartFile[] file
+    ) {
+        List<ResourcesResponse> resourcesResponse = resourceService.fileUploadProcessing(path, file);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -60,12 +51,11 @@ public class ResourceController {
 
     @GetMapping("/download/{path}")
     public ResponseEntity<?> downloadResource(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String path,
-            Authentication auth
+            @Pattern(regexp = "([a-zA-Z_\\s.-]+/)*")
+            @PathVariable String path
     ) {
         if (path.contains(".")) {
-            InputStream fileStream = resourceService.downloadFileProcessing(path, (User) auth.getPrincipal());
+            InputStream fileStream = resourceService.downloadFileProcessing(path);
 
             HttpHeaders headers = new HttpHeaders();
             headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + getResourceName(path) + "\"");
@@ -75,7 +65,7 @@ public class ResourceController {
                     .headers(headers)
                     .body(new InputStreamResource(fileStream));
         } else {
-            InputStream zipStream = resourceService.downloadFolderAsZipProcessing(path, (User) auth.getPrincipal());
+            InputStream zipStream = resourceService.downloadFolderAsZipProcessing(path);
 
             HttpHeaders headers = new HttpHeaders();
             headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + getResourceName(path) + ".zip\"");
@@ -89,13 +79,10 @@ public class ResourceController {
 
     @GetMapping("/move/{from}{to}")
     public ResponseEntity<?> moveResource(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
+            @Pattern(regexp = "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
             @PathVariable String from,
-            @PathVariable String to,
-            Authentication auth
+            @PathVariable String to
     ) {
-        return ResponseEntity.ok(
-                resourceService.moveAndRenameResourceProcessing(from, to, (User) auth.getPrincipal())
-        );
+        return ResponseEntity.ok(resourceService.moveAndRenameResourceProcessing(from, to));
     }
 }

@@ -21,39 +21,34 @@ public class DirectoryController {
 
     private final ResourceService resourceService;
 
-    @PostMapping("/{path}")
+    @PostMapping
     public ResponseEntity<?> createEmptyDirectory(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String path,
-            Authentication auth
-    ) {
-        ResourcesResponse resourcesResponse = resourceService.createNewFolderProcessing(
-                path, (User) auth.getPrincipal()
-        );
+            @Pattern(regexp = "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
+            @RequestParam("path") String path
+            ) {
+        ResourcesResponse resourcesResponse = resourceService.createNewFolderProcessing(path);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(resourcesResponse);
     }
 
-    @GetMapping("/{path}")
+    @GetMapping
     public ResponseEntity<?> getInfoAboutContentsDirectory(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String path,
-            Authentication auth
+            @Pattern(regexp = "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
+            @RequestParam("path") String path
     ) {
-        List<ResourcesResponse> resourcesResponse = resourceService.getInfoAboutContentsDirectory(path, (User) auth.getPrincipal());
+        List<ResourcesResponse> resourcesResponse = resourceService.getInfoAboutContentsDirectory(path);
         return ResponseEntity.
                 ok(resourcesResponse);
     }
 
-    @DeleteMapping("/{path}")
+    @DeleteMapping
     public ResponseEntity<?> deleteResource(
-            @Pattern(regexp= "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String path,
-            Authentication auth
+            @Pattern(regexp = "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
+            @RequestParam("path") String path
     ) {
-        resourceService.deleteResourceProcessing(path, (User) auth.getPrincipal());
+        resourceService.deleteResourceProcessing(path);
 
         return ResponseEntity
                 .status(HttpStatus.NO_CONTENT)
