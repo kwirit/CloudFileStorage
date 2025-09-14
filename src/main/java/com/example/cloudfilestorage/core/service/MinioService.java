@@ -7,18 +7,22 @@ import com.example.cloudfilestorage.core.exception.ResourceException.FailedResou
 import com.example.cloudfilestorage.core.exception.ResourceException.FileDoesNotExistException;
 import com.example.cloudfilestorage.core.exception.ResourceException.FolderDoesNotExistException;
 import io.minio.*;
+import io.minio.errors.ErrorResponseException;
+import io.minio.errors.MinioException;
 import io.minio.messages.DeleteError;
 import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.ErrorResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -36,7 +40,7 @@ public class MinioService {
     @Value("${minio.buckets.user-files-bucket}")
     private String userFilesBucketName;
 
-    public boolean isFileExist(String objectName) throws FileDoesNotExistException {
+    public boolean isFileExist(String objectName) {
         try {
             minioClient.statObject(
                     StatObjectArgs.builder()
@@ -47,8 +51,8 @@ public class MinioService {
             return true;
         } catch (ErrorResponseException e) {
             return false;
-        } catch (Exception e) {
-            throw new FileDoesNotExistException(e.getMessage());
+        } catch (MinioException | InvalidKeyException | NoSuchAlgorithmException | IOException e) {
+            throw new FailedResourceOperationsException(e.getMessage());
         }
     }
 

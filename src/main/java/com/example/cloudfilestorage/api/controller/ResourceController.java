@@ -30,9 +30,9 @@ public class ResourceController {
         this.resourceService = resourceService;
     }
 
-    @GetMapping("/{path}")
+    @GetMapping
     public ResponseEntity<?> getResourceInfo(
-            @PathVariable String path
+            @RequestParam("path") String path
     ) {
         return ResponseEntity.ok(resourceService.getResourcesInfoProcessing(path));
     }
@@ -77,11 +77,11 @@ public class ResourceController {
         }
     }
 
-    @GetMapping("/move/{from}{to}")
+    @GetMapping("/move{from}{to}")
     public ResponseEntity<?> moveResource(
             @Pattern(regexp = "([a-zA-Z_\\s.-]*/)*([a-zA-Z_\\s-]*(.[a-zA-Z]*)?)")
-            @PathVariable String from,
-            @PathVariable String to
+            @RequestParam("from") String from,
+            @RequestParam("to") String to
     ) {
         return ResponseEntity.ok(resourceService.moveAndRenameResourceProcessing(from, to));
     }
